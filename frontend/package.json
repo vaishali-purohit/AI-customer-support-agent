@@ -6,12 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "jest"
   },
   "dependencies": {
     "react": "^18",
-    "react-dom": "^18",
-    "zod": "^4.4.3"
+    "react-dom": "^18"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",

@@ -1,4 +1,4 @@
-.PHONY: install install-frontend install-backend run run-frontend run-backend test test-frontend test-backend test-scenarios zip clean
+.PHONY: install install-frontend install-backend run run-frontend run-backend test test-frontend test-backend test-scenarios stop zip clean
 
 # Configuration
 PYTHON := python3.11
@@ -32,18 +32,23 @@ install-frontend:
 # Run
 run:
 	@echo "→ Starting backend and frontend..."
-	@trap 'kill 0' INT TERM EXIT; \
-	(cd $(BACKEND_DIR) && ../$(VENV)/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000) & \
-	(cd $(FRONTEND_DIR) && npm run dev) & \
-	wait
+	@bash run.sh || true
 
 run-backend:
 	@echo "→ Starting FastAPI backend..."
-	cd $(BACKEND_DIR) && ../$(VENV)/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	cd $(BACKEND_DIR) && ./venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 run-frontend:
 	@echo "→ Starting Next.js frontend..."
 	cd $(FRONTEND_DIR) && npm run dev
+
+stop:
+	@echo "→ Stopping all services..."
+	@lsof -ti tcp:8000 | xargs kill 2>/dev/null || true
+	@lsof -ti tcp:3000 | xargs kill 2>/dev/null || true
+	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
+	@pkill -f "next-server" 2>/dev/null || true
+	@echo "✓ All services stopped."
 
 # Tests
 test: test-backend test-frontend test-scenarios
@@ -52,7 +57,7 @@ test: test-backend test-frontend test-scenarios
 
 test-backend:
 	@echo "→ Running Python tests..."
-	$(PYTEST) $(BACKEND_DIR)/tests -v
+	cd $(BACKEND_DIR) && ./venv/bin/pytest tests -v
 
 test-frontend:
 	@echo "→ Running frontend tests..."
@@ -60,7 +65,15 @@ test-frontend:
 
 test-scenarios:
 	@echo "→ Running AI scenario tests..."
-	cd $(BACKEND_DIR) && ../$(VENV)/bin/python scenarios/runner.py
+	@bash -c ' \
+		(cd $(BACKEND_DIR) && ./venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000) & \
+		BACKEND_PID=$$!; \
+		trap "kill $$BACKEND_PID 2>/dev/null || true" EXIT; \
+		sleep 2; \
+		cd $(BACKEND_DIR) && ./venv/bin/python scenarios/runner.py; \
+		kill $$BACKEND_PID 2>/dev/null || true; \
+		wait $$BACKEND_PID 2>/dev/null || true \
+	'
 
 # Zip
 zip:
@@ -87,5 +100,5 @@ clean:
 	rm -rf $(FRONTEND_DIR)/.next
 	rm -rf $(FRONTEND_DIR)/coverage
 	rm -rf $(BACKEND_DIR)/.pytest_cache
-	rm -rf $(BACKEND_DIR)/**/__pycache__
+	find $(BACKEND_DIR) -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@echo "✓ Clean complete."
